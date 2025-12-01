@@ -27,10 +27,10 @@ export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const loadAttendanceRecords = useCallback(() => {
+  const loadAttendanceRecords = useCallback(async () => {
     if (!user) return;
 
-    const records = getAttendanceRecordsByUserIdAndMonth(user.id, currentYear, currentMonth);
+    const records = await getAttendanceRecordsByUserIdAndMonth(user.id, currentYear, currentMonth);
     setAttendanceRecords(records);
   }, [user, currentYear, currentMonth]);
 
@@ -45,7 +45,7 @@ export default function DashboardPage() {
     setIsModalOpen(true);
   };
 
-  const handleSaveAttendance = (data: Omit<AttendanceRecord, 'id' | 'user_id'>) => {
+  const handleSaveAttendance = async (data: Omit<AttendanceRecord, 'id' | 'user_id'>) => {
     if (!user || !selectedDate) return;
 
     // 日付の整合性を確保
@@ -55,16 +55,16 @@ export default function DashboardPage() {
     };
 
     // 既存レコードをチェック（user_idとdateで検索）
-    const existingRecord = getAttendanceRecordByUserIdAndDate(user.id, selectedDate);
+    const existingRecord = await getAttendanceRecordByUserIdAndDate(user.id, selectedDate);
 
     if (existingRecord) {
       // 更新
       console.log('勤怠記録を更新:', existingRecord.id, saveData);
-      updateAttendanceRecord(existingRecord.id, saveData);
+      await updateAttendanceRecord(existingRecord.id, saveData);
     } else {
       // 新規作成
       console.log('新規勤怠記録を作成:', saveData);
-      createAttendanceRecord({
+      await createAttendanceRecord({
         ...saveData,
         user_id: user.id,
       });
@@ -231,7 +231,7 @@ export default function DashboardPage() {
           onOpenChange={setIsModalOpen}
           date={selectedDate}
           userId={user.id}
-          existingRecord={existingRecord}
+          existingRecord={attendanceRecords.find((r) => r.date === selectedDate)}
           onSave={handleSaveAttendance}
         />
       )}

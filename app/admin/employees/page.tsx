@@ -53,9 +53,10 @@ export default function EmployeesManagementPage() {
     loadEmployees();
   }, []);
 
-  const loadEmployees = () => {
-    const allUsers = getAllUsers().filter((u) => u.role === 'user');
-    setEmployees(allUsers);
+  const loadEmployees = async () => {
+    const allUsers = await getAllUsers();
+    const employees = allUsers.filter((u) => u.role === 'user');
+    setEmployees(employees);
   };
 
   const handleAddEmployee = () => {

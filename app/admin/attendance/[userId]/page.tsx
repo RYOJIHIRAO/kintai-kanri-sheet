@@ -35,15 +35,15 @@ export default function EmployeeAttendancePage() {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
 
-  const loadEmployeeData = useCallback(() => {
-    const emp = getUserById(userId);
+  const loadEmployeeData = useCallback(async () => {
+    const emp = await getUserById(userId);
     if (!emp) {
       router.push('/admin/dashboard');
       return;
     }
 
     setEmployee(emp);
-    const records = getAttendanceRecordsByUserIdAndMonth(userId, currentYear, currentMonth);
+    const records = await getAttendanceRecordsByUserIdAndMonth(userId, currentYear, currentMonth);
     setAttendanceRecords(records.sort((a, b) => a.date.localeCompare(b.date)));
   }, [userId, currentYear, currentMonth, router]);
 
@@ -71,13 +71,13 @@ export default function EmployeeAttendancePage() {
     }
   };
 
-  const handleApprove = (recordId: string) => {
-    updateAttendanceRecord(recordId, { status: 'approved' });
+  const handleApprove = async (recordId: string) => {
+    await updateAttendanceRecord(recordId, { status: 'approved' });
     loadEmployeeData();
   };
 
-  const handleRemand = (recordId: string) => {
-    updateAttendanceRecord(recordId, { status: 'remanded' });
+  const handleRemand = async (recordId: string) => {
+    await updateAttendanceRecord(recordId, { status: 'remanded' });
     loadEmployeeData();
   };
 

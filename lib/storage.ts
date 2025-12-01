@@ -1,42 +1,5 @@
-import type { User, AttendanceRecord, WorkSpan } from '@/types';
-import { v4 as uuidv4 } from 'uuid';
-
-/**
- * LocalStorageのキー定義
- */
-const STORAGE_KEYS = {
-  USERS: 'attendance_users',
-  ATTENDANCE_RECORDS: 'attendance_records',
-  CURRENT_USER: 'attendance_current_user',
-} as const;
-
-/**
- * LocalStorageからデータを取得
- */
-function getFromStorage<T>(key: string, defaultValue: T): T {
-  if (typeof window === 'undefined') return defaultValue;
-
-  try {
-    const item = window.localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
-  } catch (error) {
-    console.error(`Error reading from localStorage (${key}):`, error);
-    return defaultValue;
-  }
-}
-
-/**
- * LocalStorageにデータを保存
- */
-function saveToStorage<T>(key: string, value: T): void {
-  if (typeof window === 'undefined') return;
-
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch (error) {
-    console.error(`Error saving to localStorage (${key}):`, error);
-  }
-}
+import type { User, AttendanceRecord } from '@/types';
+import { supabase } from '@/lib/supabase';
 
 /**
  * UUIDを生成
@@ -50,220 +13,341 @@ export function generateId(): string {
 /**
  * すべてのユーザーを取得
  */
-export function getAllUsers(): User[] {
-  return getFromStorage<User[]>(STORAGE_KEYS.USERS, []);
+export async function getAllUsers(): Promise<User[]> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching users:', error);
+    return [];
+  }
+
+  return data || [];
 }
 
 /**
  * ユーザーをIDで取得
  */
-export function getUserById(id: string): User | undefined {
-  const users = getAllUsers();
-  return users.find((user) => user.id === id);
+export async function getUserById(id: string): Promise<User | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error('Error fetching user by ID:', error);
+    return null;
+  }
+
+  return data;
 }
 
 /**
  * メールアドレスでユーザーを取得
  */
-export function getUserByEmail(email: string): User | undefined {
-  const users = getAllUsers();
-  return users.find((user) => user.email === email);
+export async function getUserByEmail(email: string): Promise<User | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('email', email)
+    .single();
+
+  if (error) {
+    console.error('Error fetching user by email:', error);
+    return null;
+  }
+
+  return data;
+}
+
+/**
+ * 社員IDでユーザーを取得
+ */
+export async function getUserByEmployeeId(employeeId: string): Promise<User | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching user by employee ID:', error);
+    return null;
+  }
+
+  return data;
 }
 
 /**
  * ユーザーを作成
  */
-export function createUser(userData: Omit<User, 'id'>): User {
-  const users = getAllUsers();
-  const newUser: User = {
-    ...userData,
-    id: generateId(),
-  };
-  users.push(newUser);
-  saveToStorage(STORAGE_KEYS.USERS, users);
-  return newUser;
+export async function createUser(userData: Omit<User, 'id' | 'created_at'>): Promise<User | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .insert([userData as any])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating user:', error);
+    return null;
+  }
+
+  return data;
 }
 
 /**
  * ユーザーを更新
  */
-export function updateUser(id: string, userData: Partial<User>): User | undefined {
-  const users = getAllUsers();
-  const index = users.findIndex((user) => user.id === id);
+export async function updateUser(id: string, userData: Partial<User>): Promise<User | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .update(userData)
+    .eq('id', id)
+    .select()
+    .single();
 
-  if (index === -1) return undefined;
+  if (error) {
+    console.error('Error updating user:', error);
+    return null;
+  }
 
-  users[index] = { ...users[index], ...userData };
-  saveToStorage(STORAGE_KEYS.USERS, users);
-  return users[index];
+  return data;
 }
 
 /**
  * ユーザーを削除
  */
-export function deleteUser(id: string): boolean {
-  const users = getAllUsers();
-  const filteredUsers = users.filter((user) => user.id !== id);
+export async function deleteUser(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('users')
+    .delete()
+    .eq('id', id);
 
-  if (filteredUsers.length === users.length) return false;
+  if (error) {
+    console.error('Error deleting user:', error);
+    return false;
+  }
 
-  saveToStorage(STORAGE_KEYS.USERS, filteredUsers);
   return true;
 }
 
 // ================== AttendanceRecord関連 ==================
 
 /**
- * 旧形式のデータを新形式にマイグレーション
+ * すべての勤怠記録を取得
  */
-function migrateAttendanceRecords(records: any[]): AttendanceRecord[] {
-  let needsSave = false;
+export async function getAllAttendanceRecords(): Promise<AttendanceRecord[]> {
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .select('*')
+    .order('date', { ascending: false });
 
-  const migratedRecords = records.map((record) => {
-    // 旧形式（start_time/end_time）のデータをwork_spans配列に変換
-    if (record.start_time && record.end_time && !record.work_spans) {
-      console.log(`マイグレーション中: ${record.id} (${record.date})`);
-      needsSave = true;
-
-      const workSpan: WorkSpan = {
-        id: uuidv4(),
-        start_time: record.start_time,
-        end_time: record.end_time,
-      };
-
-      // 新形式に変換（start_time/end_timeは削除）
-      const { start_time, end_time, ...rest } = record;
-      return {
-        ...rest,
-        work_spans: [workSpan],
-      } as AttendanceRecord;
-    }
-
-    // 既に新形式の場合はそのまま返す
-    return record as AttendanceRecord;
-  });
-
-  // マイグレーションが行われた場合は保存
-  if (needsSave) {
-    console.log('マイグレーションされたデータを保存中...');
-    saveToStorage(STORAGE_KEYS.ATTENDANCE_RECORDS, migratedRecords);
+  if (error) {
+    console.error('Error fetching attendance records:', error);
+    return [];
   }
 
-  return migratedRecords;
-}
-
-/**
- * すべての勤怠記録を取得（自動マイグレーション付き）
- */
-export function getAllAttendanceRecords(): AttendanceRecord[] {
-  const rawRecords = getFromStorage<any[]>(STORAGE_KEYS.ATTENDANCE_RECORDS, []);
-  return migrateAttendanceRecords(rawRecords);
+  return data || [];
 }
 
 /**
  * 勤怠記録をIDで取得
  */
-export function getAttendanceRecordById(id: string): AttendanceRecord | undefined {
-  const records = getAllAttendanceRecords();
-  return records.find((record) => record.id === id);
+export async function getAttendanceRecordById(id: string): Promise<AttendanceRecord | null> {
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error('Error fetching attendance record by ID:', error);
+    return null;
+  }
+
+  return data;
 }
 
 /**
  * ユーザーIDで勤怠記録を取得
  */
-export function getAttendanceRecordsByUserId(userId: string): AttendanceRecord[] {
-  const records = getAllAttendanceRecords();
-  return records.filter((record) => record.user_id === userId);
+export async function getAttendanceRecordsByUserId(userId: string): Promise<AttendanceRecord[]> {
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching attendance records by user ID:', error);
+    return [];
+  }
+
+  return data || [];
 }
 
 /**
  * ユーザーIDと日付で勤怠記録を取得
  */
-export function getAttendanceRecordByUserIdAndDate(
+export async function getAttendanceRecordByUserIdAndDate(
   userId: string,
   date: string
-): AttendanceRecord | undefined {
-  const records = getAllAttendanceRecords();
-  return records.find((record) => record.user_id === userId && record.date === date);
+): Promise<AttendanceRecord | null> {
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('date', date)
+    .single();
+
+  if (error) {
+    console.error('Error fetching attendance record by user ID and date:', error);
+    return null;
+  }
+
+  return data;
 }
 
 /**
  * ユーザーIDと年月で勤怠記録を取得
  */
-export function getAttendanceRecordsByUserIdAndMonth(
+export async function getAttendanceRecordsByUserIdAndMonth(
   userId: string,
   year: number,
   month: number
-): AttendanceRecord[] {
-  const records = getAttendanceRecordsByUserId(userId);
+): Promise<AttendanceRecord[]> {
   const monthStr = month.toString().padStart(2, '0');
+  const startDate = `${year}-${monthStr}-01`;
+  const endDate = `${year}-${monthStr}-31`;
 
-  return records.filter((record) => {
-    const [recordYear, recordMonth] = record.date.split('-');
-    return recordYear === year.toString() && recordMonth === monthStr;
-  });
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .order('date', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching attendance records by user ID and month:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+/**
+ * ステータスで勤怠記録を取得
+ */
+export async function getAttendanceRecordsByStatus(status: string): Promise<AttendanceRecord[]> {
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .select('*')
+    .eq('status', status)
+    .order('date', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching attendance records by status:', error);
+    return [];
+  }
+
+  return data || [];
 }
 
 /**
  * 勤怠記録を作成
  */
-export function createAttendanceRecord(
-  recordData: Omit<AttendanceRecord, 'id'>
-): AttendanceRecord {
-  const records = getAllAttendanceRecords();
-  const newRecord: AttendanceRecord = {
-    ...recordData,
-    id: generateId(),
-  };
-  records.push(newRecord);
-  saveToStorage(STORAGE_KEYS.ATTENDANCE_RECORDS, records);
-  return newRecord;
+export async function createAttendanceRecord(
+  recordData: Omit<AttendanceRecord, 'id' | 'created_at'>
+): Promise<AttendanceRecord | null> {
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .insert([recordData])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating attendance record:', error);
+    return null;
+  }
+
+  return data;
 }
 
 /**
  * 勤怠記録を更新
  */
-export function updateAttendanceRecord(
+export async function updateAttendanceRecord(
   id: string,
   recordData: Partial<AttendanceRecord>
-): AttendanceRecord | undefined {
-  const records = getAllAttendanceRecords();
-  const index = records.findIndex((record) => record.id === id);
+): Promise<AttendanceRecord | null> {
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .update(recordData)
+    .eq('id', id)
+    .select()
+    .single();
 
-  if (index === -1) return undefined;
+  if (error) {
+    console.error('Error updating attendance record:', error);
+    return null;
+  }
 
-  records[index] = { ...records[index], ...recordData };
-  saveToStorage(STORAGE_KEYS.ATTENDANCE_RECORDS, records);
-  return records[index];
+  return data;
 }
 
 /**
  * 勤怠記録を削除
  */
-export function deleteAttendanceRecord(id: string): boolean {
-  const records = getAllAttendanceRecords();
-  const filteredRecords = records.filter((record) => record.id !== id);
+export async function deleteAttendanceRecord(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('attendance_records')
+    .delete()
+    .eq('id', id);
 
-  if (filteredRecords.length === records.length) return false;
+  if (error) {
+    console.error('Error deleting attendance record:', error);
+    return false;
+  }
 
-  saveToStorage(STORAGE_KEYS.ATTENDANCE_RECORDS, filteredRecords);
   return true;
 }
 
 // ================== Session関連 ==================
+// セッション管理はクライアント側のLocalStorageを継続使用（簡易実装）
+
+const STORAGE_KEY_CURRENT_USER = 'attendance_current_user';
 
 /**
- * 現在のユーザーを取得
+ * 現在のユーザーを取得（LocalStorage）
  */
 export function getCurrentUser(): User | null {
-  return getFromStorage<User | null>(STORAGE_KEYS.CURRENT_USER, null);
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const item = window.localStorage.getItem(STORAGE_KEY_CURRENT_USER);
+    return item ? JSON.parse(item) : null;
+  } catch (error) {
+    console.error('Error reading current user from localStorage:', error);
+    return null;
+  }
 }
 
 /**
- * 現在のユーザーを設定
+ * 現在のユーザーを設定（LocalStorage）
  */
 export function setCurrentUser(user: User): void {
-  saveToStorage(STORAGE_KEYS.CURRENT_USER, user);
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY_CURRENT_USER, JSON.stringify(user));
+  } catch (error) {
+    console.error('Error saving current user to localStorage:', error);
+  }
 }
 
 /**
@@ -271,15 +355,15 @@ export function setCurrentUser(user: User): void {
  */
 export function logout(): void {
   if (typeof window !== 'undefined') {
-    window.localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    window.localStorage.removeItem(STORAGE_KEY_CURRENT_USER);
   }
 }
 
 /**
  * ログイン認証（簡易版）
  */
-export function authenticate(email: string, password: string): User | null {
-  const user = getUserByEmail(email);
+export async function authenticate(email: string, password: string): Promise<User | null> {
+  const user = await getUserByEmail(email);
 
   // 開発用：パスワードが設定されていない場合は認証成功
   if (user && (!user.password || user.password === password)) {
@@ -290,48 +374,17 @@ export function authenticate(email: string, password: string): User | null {
   return null;
 }
 
-// ================== 初期データ ==================
-
 /**
- * 初期データをセットアップ
+ * 社員IDでログイン認証（簡易版）
  */
-export function setupInitialData(): void {
-  const existingUsers = getAllUsers();
+export async function authenticateByEmployeeId(employeeId: string, password: string): Promise<User | null> {
+  const user = await getUserByEmployeeId(employeeId);
 
-  if (existingUsers.length === 0) {
-    // 管理者ユーザーを作成
-    createUser({
-      name: '管理者',
-      email: 'admin@example.com',
-      employee_id: 'ADMIN001',
-      role: 'admin',
-      employment_type: 'regular',
-      hourly_wage: 2000,
-      closing_date: 31,
-      password: 'admin123',
-    });
-
-    // 一般ユーザーを作成
-    createUser({
-      name: '山田太郎',
-      email: 'yamada@example.com',
-      employee_id: 'EMP001',
-      role: 'user',
-      employment_type: 'regular',
-      hourly_wage: 1500,
-      closing_date: 31,
-      password: 'user123',
-    });
-
-    createUser({
-      name: '佐藤花子',
-      email: 'sato@example.com',
-      employee_id: 'EMP002',
-      role: 'user',
-      employment_type: 'part_time',
-      hourly_wage: 1200,
-      closing_date: 31,
-      password: 'user123',
-    });
+  // 開発用：パスワードが設定されていない場合は認証成功
+  if (user && (!user.password || user.password === password)) {
+    setCurrentUser(user);
+    return user;
   }
+
+  return null;
 }

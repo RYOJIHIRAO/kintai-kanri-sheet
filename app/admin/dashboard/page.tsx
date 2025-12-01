@@ -38,30 +38,42 @@ export default function AdminDashboardPage() {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [employeeSummaries, setEmployeeSummaries] = useState<EmployeeSummary[]>([]);
+  const [totalRecordsThisMonth, setTotalRecordsThisMonth] = useState(0);
 
-  const loadEmployeeSummaries = useCallback(() => {
-    const users = getAllUsers().filter((u) => u.role === 'user');
+  const loadEmployeeSummaries = useCallback(async () => {
+    const allUsers = await getAllUsers();
+    const users = allUsers.filter((u) => u.role === 'user');
 
-    const summaries: EmployeeSummary[] = users.map((u) => {
-      const records = getAttendanceRecordsByUserIdAndMonth(u.id, currentYear, currentMonth);
+    const summaries: EmployeeSummary[] = await Promise.all(
+      users.map(async (u) => {
+        const records = await getAttendanceRecordsByUserIdAndMonth(u.id, currentYear, currentMonth);
 
-      const totalWorkMinutes = records.reduce((sum, r) => sum + r.computed_work_min, 0);
-      const totalOvertimeMinutes = records.reduce((sum, r) => sum + r.computed_overtime_min, 0);
-      const totalDaysWorked = records.filter((r) => r.status === 'approved').length;
-      const pendingCount = records.filter((r) => r.status === 'pending').length;
-      const approvedCount = records.filter((r) => r.status === 'approved').length;
+        const totalWorkMinutes = records.reduce((sum, r) => sum + r.computed_work_min, 0);
+        const totalOvertimeMinutes = records.reduce((sum, r) => sum + r.computed_overtime_min, 0);
+        const totalDaysWorked = records.filter((r) => r.status === 'approved').length;
+        const pendingCount = records.filter((r) => r.status === 'pending').length;
+        const approvedCount = records.filter((r) => r.status === 'approved').length;
 
-      return {
-        user: u,
-        totalWorkMinutes,
-        totalOvertimeMinutes,
-        totalDaysWorked,
-        pendingCount,
-        approvedCount,
-      };
-    });
+        return {
+          user: u,
+          totalWorkMinutes,
+          totalOvertimeMinutes,
+          totalDaysWorked,
+          pendingCount,
+          approvedCount,
+        };
+      })
+    );
 
     setEmployeeSummaries(summaries);
+
+    // 今月の全レコード数を計算
+    const allRecords = await getAllAttendanceRecords();
+    const recordsCount = allRecords.filter((r) => {
+      const [year, month] = r.date.split('-');
+      return parseInt(year) === currentYear && parseInt(month) === currentMonth;
+    }).length;
+    setTotalRecordsThisMonth(recordsCount);
   }, [currentYear, currentMonth]);
 
   useEffect(() => {
@@ -100,11 +112,6 @@ export default function AdminDashboardPage() {
 
   const totalEmployees = employeeSummaries.length;
   const totalPending = employeeSummaries.reduce((sum, s) => sum + s.pendingCount, 0);
-  const allRecords = getAllAttendanceRecords();
-  const totalRecordsThisMonth = allRecords.filter((r) => {
-    const [year, month] = r.date.split('-');
-    return parseInt(year) === currentYear && parseInt(month) === currentMonth;
-  }).length;
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { authenticate, setupInitialData, getCurrentUser } from '@/lib/storage';
+import { authenticate, getCurrentUser } from '@/lib/storage';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,9 +16,6 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // 初期データのセットアップ
-    setupInitialData();
-
     // すでにログインしている場合はリダイレクト
     const currentUser = getCurrentUser();
     if (currentUser) {
@@ -36,7 +33,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const user = authenticate(email, password);
+      const user = await authenticate(email, password);
 
       if (user) {
         // ログイン成功
