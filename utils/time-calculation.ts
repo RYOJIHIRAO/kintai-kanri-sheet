@@ -80,6 +80,7 @@ export function calculateNightMinutes(
 ): number {
   const nightStart = parseTimeString('22:00');
   const nightEnd = parseTimeString('05:00', '2000-01-02');
+  const nextDayStart = parseTimeString('00:00', '2000-01-02');
 
   const start = parseTimeString(startTime);
   let end = parseTimeString(endTime);
@@ -107,7 +108,6 @@ export function calculateNightMinutes(
     }
 
     // 翌日00:00〜05:00の深夜時間を計算
-    const nextDayStart = parseTimeString('00:00', '2000-01-02');
     if (isAfter(workEnd, nextDayStart)) {
       const periodStart = isAfter(workStart, nextDayStart) ? workStart : nextDayStart;
       const periodEnd = isBefore(workEnd, nightEnd) ? workEnd : nightEnd;
