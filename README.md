@@ -49,7 +49,7 @@ npm run dev
 
 ### 管理者アカウント
 - メール: admin@example.com
-- パスワード: admin123
+- パスワード: fkjahdiojFJ209u
 
 ### 従業員アカウント
 - メール: yamada@example.com

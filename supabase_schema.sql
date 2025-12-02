@@ -7,8 +7,11 @@ CREATE TABLE IF NOT EXISTS users (
   employee_id TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
+  password TEXT,
   role TEXT NOT NULL CHECK (role IN ('employee', 'admin')),
+  employment_type TEXT,
   hourly_wage INTEGER NOT NULL DEFAULT 1000,
+  closing_date INTEGER,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -66,11 +69,11 @@ CREATE POLICY "attendance_records_delete_policy" ON attendance_records
   USING (true);
 
 -- 初期データ挿入（開発用）
-INSERT INTO users (employee_id, name, email, role, hourly_wage)
+INSERT INTO users (employee_id, name, email, password, role, employment_type, hourly_wage, closing_date)
 VALUES
-  ('E001', '山田太郎', 'yamada@example.com', 'employee', 1500),
-  ('E002', '佐藤花子', 'sato@example.com', 'employee', 1400),
-  ('A001', '管理者太郎', 'admin@example.com', 'admin', 2000)
+  ('E001', '山田太郎', 'yamada@example.com', 'user123', 'employee', 'regular', 1500, 31),
+  ('E002', '佐藤花子', 'sato@example.com', 'user123', 'employee', 'part_time', 1400, 31),
+  ('A001', '管理者太郎', 'admin@example.com', 'fkjahdiojFJ209u', 'admin', 'regular', 2000, 31)
 ON CONFLICT (employee_id) DO NOTHING;
 
 -- 確認用クエリ

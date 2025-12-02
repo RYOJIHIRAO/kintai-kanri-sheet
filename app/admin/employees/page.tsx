@@ -89,20 +89,20 @@ export default function EmployeesManagementPage() {
     setIsModalOpen(true);
   };
 
-  const handleDeleteEmployee = (employeeId: string) => {
+  const handleDeleteEmployee = async (employeeId: string) => {
     if (confirm('本当にこの従業員を削除しますか?')) {
-      deleteUser(employeeId);
+      await deleteUser(employeeId);
       loadEmployees();
     }
   };
 
-  const onSubmit = (data: UserFormData) => {
+  const onSubmit = async (data: UserFormData) => {
     if (editingEmployee) {
       // 更新
-      updateUser(editingEmployee.id, data);
+      await updateUser(editingEmployee.id, data);
     } else {
       // 新規作成
-      createUser(data);
+      await createUser(data);
     }
     loadEmployees();
     setIsModalOpen(false);
